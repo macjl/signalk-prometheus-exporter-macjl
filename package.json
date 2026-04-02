@@ -13,8 +13,10 @@
   ],
   "author": "Jean-Laurent Girod <jeanlaurent.girod@icloud.com>",
   "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "baconjs": "^1.0.1",
     "debug": "^2.2.0"
   },
   "devDependencies": {
