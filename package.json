@@ -1,5 +1,5 @@
 {
-  "name": "@macjl/signalk-prometheus-exporter2",
+  "name": "signalk-prometheus-exporter-macjl",
   "version": "0.1.3",
   "description": "Signal K server plugin expose a Prometheus pull end point (fork)",
   "main": "index.js",
@@ -7,12 +7,19 @@
     "format": "prettier-standard '*.js*'",
     "test": "node --test"
   },
-  "repository": "https://github.com/macjl/signalk-prometheus-exporter2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/macjl/signalk-prometheus-exporter-macjl.git"
+  },
   "keywords": [
     "signalk-node-server-plugin"
   ],
   "author": "Jean-Laurent Girod <jeanlaurent.girod@icloud.com>",
   "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/macjl/signalk-prometheus-exporter-macjl/issues"
+  },
+  "homepage": "https://github.com/macjl/signalk-prometheus-exporter-macjl#readme",
   "engines": {
     "node": ">=18.0.0"
   },

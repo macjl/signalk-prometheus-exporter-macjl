@@ -1,14 +1,34 @@
 # Signal K to Prometheus Plugin
 
-Forked from https://github.com/ieb/signalk-prometheus-exporter
+Maintained fork of [ieb/signalk-prometheus-exporter](https://github.com/ieb/signalk-prometheus-exporter).
 
-Signal K Node server plugin to make a Prometheus pull end point to allow a Prometheus server to pull data.
+Repository:
 
-To use, install a Prometheus server and configure it to pull from 
+`https://github.com/macjl/signalk-prometheus-exporter-macjl`
 
-http://localhost:3000/signalk/v1/api/prometheus
+This plugin exposes a Prometheus scrape endpoint for Signal K data:
 
-which will contain the current values eg
+`http://localhost:3000/signalk/v1/api/prometheus`
+
+## npm package name
+
+To keep naming consistent with the other public Signal K plugins while avoiding the original package name already taken on npm, future releases are prepared under:
+
+`signalk-prometheus-exporter-macjl`
+
+The Signal K plugin id remains:
+
+`signalk-prometheus-exporter`
+
+## Installation
+
+```sh
+npm install --prefix ~/.signalk signalk-prometheus-exporter-macjl
+```
+
+## Example output
+
+The Prometheus endpoint contains current values such as:
 
     # HELP navigation_speedOverGround navigation_speedOverGround
     # TYPE navigation_speedOverGround gauge
@@ -22,3 +42,9 @@ which will contain the current values eg
     # HELP navigation_position_latitude navigation_position_latitude
     # TYPE navigation_position_latitude gauge
     navigation_position_latitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1"} 23.6357923 176575026968
+
+## Notes
+
+- This repository is the maintained fork.
+- The npm package name is intentionally distinct from the abandoned upstream package.
+- The plugin id stays stable for Signal K compatibility.
