@@ -13,15 +13,11 @@
  * limitations under the License.
  */
 
-const Bacon = require('baconjs')
-const debug = require('debug')('signalk-prometheus-exporter')
-const util = require('util')
-
 module.exports = function (app) {
-  const logError = app.error || ((err) => {console.error(err)})
   let selfContext = 'vessels.' + app.selfId
-  let store = {};
-  let maxAgeMs = 600000;
+  let store = {}
+  let maxAgeMs = 600000
+  let allShip = 0
 
   let unsubscribes = []
   let shouldStore = function (path) {
@@ -29,30 +25,37 @@ module.exports = function (app) {
   }
 
   function toPromKey(v) {
-    return v.replace(/-|\./g,"_");
+    return v.replace(/-|\./g, '_')
+  }
+
+  function escapeLabelValue(v) {
+    return String(v)
+      .replace(/\\/g, '\\\\')
+      .replace(/\n/g, '\\n')
+      .replace(/"/g, '\\"')
   }
 
   function toMetrics(store) {
-    let r = "";
-    const now = Date.now();
+    let r = ''
+    const now = Date.now()
     for (const key in store) {
-      const entry = store[key];
+      const entry = store[key]
       if (now - entry.timestamp > maxAgeMs) {
-        delete store[key];
-        continue;
+        delete store[key]
+        continue
       }
-      const k = toPromKey(entry.path);
-      r += `# HELP ${k} ${k}\n`;
-      r += `# TYPE ${k} gauge\n`;
+      const k = toPromKey(entry.path)
+      r += `# HELP ${k} ${k}\n`
+      r += `# TYPE ${k} gauge\n`
 
-      let labels = `context="${entry.context}",source="${entry.source}"`;
+      let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}"`
       if (entry.strValue) {
-        labels += `,value_str="${entry.strValue}"`;
+        labels += `,value_str="${escapeLabelValue(entry.strValue)}"`
       }
 
-      r += `${k}{${labels}} ${entry.value} ${entry.timestamp}\n`;
+      r += `${k}{${labels}} ${entry.value} ${entry.timestamp}\n`
     }
-    return r;
+    return r
   }
   function checkAndStore(path, entry, context, source, timestamp, store) {
     if (entry.type === 'number') {
@@ -62,8 +65,19 @@ module.exports = function (app) {
         context,
         source,
         timestamp
-      };
+      }
     } else if (entry.type === 'string') {
+      for (const key in store) {
+        const existing = store[key]
+        if (
+          existing.path === path &&
+          existing.context === context &&
+          existing.source === source &&
+          typeof existing.strValue !== 'undefined'
+        ) {
+          delete store[key]
+        }
+      }
       store[path + context + source + '_str_' + entry.value] = {
         path,
         value: 1,
@@ -71,52 +85,52 @@ module.exports = function (app) {
         source,
         timestamp,
         strValue: entry.value
-      };
+      }
     }
   }
   function flattenJson(pathPrefix, obj, result) {
-    result = result || {};
+    result = result || {}
     if (typeof obj === 'number') {
-      result[pathPrefix] = { type: 'number', value: obj };
+      result[pathPrefix] = { type: 'number', value: obj }
     } else if (typeof obj === 'boolean') {
-      result[pathPrefix] = { type: 'number', value: obj ? 1 : 0 };
+      result[pathPrefix] = { type: 'number', value: obj ? 1 : 0 }
     } else if (typeof obj === 'string') {
-      const d = new Date(obj).getTime();
+      const d = new Date(obj).getTime()
       if (isNaN(d)) {
-        result[pathPrefix] = { type: 'string', value: obj };
+        result[pathPrefix] = { type: 'string', value: obj }
       } else {
-        result[pathPrefix] = { type: 'number', value: d };
+        result[pathPrefix] = { type: 'number', value: d }
       }
     } else if (typeof obj === 'object' && obj !== null) {
       for (const key in obj) {
-        const newPrefix = pathPrefix ? pathPrefix + '.' + key : key;
-        flattenJson(newPrefix, obj[key], result);
+        const newPrefix = pathPrefix ? pathPrefix + '.' + key : key
+        flattenJson(newPrefix, obj[key], result)
       }
     }
-    return result;
+    return result
   }
   function saveDelta(delta, checkShouldStore, store, allShip) {
-      if (!delta.updates || delta.updates.length === 0) return;
+      if (!delta.updates || delta.updates.length === 0) return
       if (delta.context === 'vessels.self') {
         delta.context = selfContext
       }
-      var context = delta.context;
-      var timestamp = new Date(delta.updates[0].timestamp).getTime();
-      var source = delta.updates[0].$source;
       if (delta.updates && (delta.context === selfContext || allShip)) {
         delta.updates.forEach(update => {
+          const context = delta.context
+          const timestamp = new Date(update.timestamp).getTime()
+          const source = update.$source
           if (update.values) {
             update.values.forEach(updateValue => {
-              const flat = flattenJson(updateValue.path, updateValue.value);
+              const flat = flattenJson(updateValue.path, updateValue.value)
               for (const path in flat) {
-                if (shouldStore(path)) {
-                  checkAndStore(path, flat[path], context, source, timestamp, store);
+                if (checkShouldStore(path)) {
+                  checkAndStore(path, flat[path], context, source, timestamp, store)
                 }
               }
-            });
+            })
           }
-        });
-      }      
+        })
+      }
   }
 
 
@@ -164,6 +178,10 @@ module.exports = function (app) {
       }
     },
     start: function (options) {
+      shouldStore = function () {
+        return true
+      }
+
       if (
         typeof options.blackOrWhitelist !== 'undefined' &&
         typeof options.blackOrWhite !== 'undefined' &&
@@ -186,15 +204,15 @@ module.exports = function (app) {
         }
       }
       if (options.selfOrAll == "All") {
-        allShip = 1;
+        allShip = 1
       } else {
-        allShip = 0;
+        allShip = 0
       }
       if (options.maxAge) {
-        maxAgeMs = options.maxAge * 1000;
+        maxAgeMs = options.maxAge * 1000
       }
       var handleDelta = function(delta) {
-        saveDelta(delta, shouldStore, store, allShip);
+        saveDelta(delta, shouldStore, store, allShip)
       }
       app.signalk.on('delta', handleDelta)
       unsubscribes.push(() => {
@@ -203,17 +221,19 @@ module.exports = function (app) {
     },
     stop: function () {
       unsubscribes.forEach(f => f())
-      store = {};
+      unsubscribes = []
+      shouldStore = function () {
+        return true
+      }
+      store = {}
     },
     signalKApiRoutes: function (router) {
       const metricsHandler = function(req, res, next) {
-        res.type("text/plain; version=0.0.4; charset=utf-8");
-        res.send(toMetrics(store));
+        res.type('text/plain; version=0.0.4; charset=utf-8')
+        res.send(toMetrics(store))
       }
-      router.get('/prometheus', metricsHandler);
-      console.log("Registered metrics end point ", router );
-      return router;
+      router.get('/prometheus', metricsHandler)
+      return router
     }
   }
 }
-
