@@ -15,6 +15,11 @@
   "keywords": [
     "signalk-node-server-plugin"
   ],
+  "signalk": {
+    "screenshots": [
+      "docs/prometheus-query.png"
+    ]
+  },
   "author": "Jean-Laurent Girod <jeanlaurent.girod@icloud.com>",
   "license": "ISC",
   "bugs": {
