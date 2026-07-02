@@ -1,6 +1,6 @@
 {
   "name": "signalk-prometheus-exporter-macjl",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Signal K server plugin expose a Prometheus pull end point (fork)",
   "main": "index.js",
   "scripts": {
