@@ -4,7 +4,8 @@
   "description": "Signal K server plugin expose a Prometheus pull end point (fork)",
   "main": "index.js",
   "scripts": {
-    "format": "prettier-standard '*.js*'",
+    "format": "standard --fix",
+    "lint": "standard",
     "test": "node --test"
   },
   "repository": {
@@ -27,7 +28,6 @@
     "debug": "^2.2.0"
   },
   "devDependencies": {
-    "prettier-standard": "^6.0.0",
-    "eslint": "^4.18.2"
+    "standard": "^17.1.2"
   }
 }

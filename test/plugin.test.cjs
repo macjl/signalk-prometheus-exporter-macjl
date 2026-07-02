@@ -4,11 +4,11 @@ const { EventEmitter } = require('node:events')
 
 const pluginFactory = require('../index')
 
-function isoNow(offsetMs = 0) {
+function isoNow (offsetMs = 0) {
   return new Date(Date.now() + offsetMs).toISOString()
 }
 
-function createHarness() {
+function createHarness () {
   const signalk = new EventEmitter()
   const app = {
     selfId: 'urn:mrn:imo:mmsi:123456789',
@@ -18,7 +18,7 @@ function createHarness() {
   const plugin = pluginFactory(app)
   let metricsHandler
   const router = {
-    get(path, handler) {
+    get (path, handler) {
       if (path === '/prometheus') {
         metricsHandler = handler
       }
@@ -28,14 +28,14 @@ function createHarness() {
 
   plugin.signalKApiRoutes(router)
 
-  function renderMetrics() {
+  function renderMetrics () {
     const response = {
       contentType: undefined,
       body: undefined,
-      type(value) {
+      type (value) {
         this.contentType = value
       },
-      send(value) {
+      send (value) {
         this.body = value
       }
     }

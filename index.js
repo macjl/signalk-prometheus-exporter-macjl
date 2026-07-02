@@ -14,7 +14,7 @@
  */
 
 module.exports = function (app) {
-  let selfContext = 'vessels.' + app.selfId
+  const selfContext = 'vessels.' + app.selfId
   let store = {}
   let maxAgeMs = 600000
   let allShip = 0
@@ -24,18 +24,18 @@ module.exports = function (app) {
     return true
   }
 
-  function toPromKey(v) {
+  function toPromKey (v) {
     return v.replace(/-|\./g, '_')
   }
 
-  function escapeLabelValue(v) {
+  function escapeLabelValue (v) {
     return String(v)
       .replace(/\\/g, '\\\\')
       .replace(/\n/g, '\\n')
       .replace(/"/g, '\\"')
   }
 
-  function toMetrics(store) {
+  function toMetrics (store) {
     let r = ''
     const now = Date.now()
     for (const key in store) {
@@ -57,7 +57,7 @@ module.exports = function (app) {
     }
     return r
   }
-  function checkAndStore(path, entry, context, source, timestamp, store) {
+  function checkAndStore (path, entry, context, source, timestamp, store) {
     if (entry.type === 'number') {
       store[path + context + source] = {
         path,
@@ -88,7 +88,7 @@ module.exports = function (app) {
       }
     }
   }
-  function flattenJson(pathPrefix, obj, result) {
+  function flattenJson (pathPrefix, obj, result) {
     result = result || {}
     if (typeof obj === 'number') {
       result[pathPrefix] = { type: 'number', value: obj }
@@ -109,30 +109,29 @@ module.exports = function (app) {
     }
     return result
   }
-  function saveDelta(delta, checkShouldStore, store, allShip) {
-      if (!delta.updates || delta.updates.length === 0) return
-      if (delta.context === 'vessels.self') {
-        delta.context = selfContext
-      }
-      if (delta.updates && (delta.context === selfContext || allShip)) {
-        delta.updates.forEach(update => {
-          const context = delta.context
-          const timestamp = new Date(update.timestamp).getTime()
-          const source = update.$source
-          if (update.values) {
-            update.values.forEach(updateValue => {
-              const flat = flattenJson(updateValue.path, updateValue.value)
-              for (const path in flat) {
-                if (checkShouldStore(path)) {
-                  checkAndStore(path, flat[path], context, source, timestamp, store)
-                }
+  function saveDelta (delta, checkShouldStore, store, allShip) {
+    if (!delta.updates || delta.updates.length === 0) return
+    if (delta.context === 'vessels.self') {
+      delta.context = selfContext
+    }
+    if (delta.updates && (delta.context === selfContext || allShip)) {
+      delta.updates.forEach(update => {
+        const context = delta.context
+        const timestamp = new Date(update.timestamp).getTime()
+        const source = update.$source
+        if (update.values) {
+          update.values.forEach(updateValue => {
+            const flat = flattenJson(updateValue.path, updateValue.value)
+            for (const path in flat) {
+              if (checkShouldStore(path)) {
+                checkAndStore(path, flat[path], context, source, timestamp, store)
               }
-            })
-          }
-        })
-      }
+            }
+          })
+        }
+      })
+    }
   }
-
 
   return {
     id: 'signalk-prometheus-exporter',
@@ -187,13 +186,13 @@ module.exports = function (app) {
         typeof options.blackOrWhite !== 'undefined' &&
         options.blackOrWhitelist.length > 0
       ) {
-        var obj = {}
+        const obj = {}
 
         options.blackOrWhitelist.forEach(element => {
           obj[element] = true
         })
 
-        if (options.blackOrWhite == 'White') {
+        if (options.blackOrWhite === 'White') {
           shouldStore = function (path) {
             return typeof obj[path] !== 'undefined'
           }
@@ -203,7 +202,7 @@ module.exports = function (app) {
           }
         }
       }
-      if (options.selfOrAll == "All") {
+      if (options.selfOrAll === 'All') {
         allShip = 1
       } else {
         allShip = 0
@@ -211,7 +210,7 @@ module.exports = function (app) {
       if (options.maxAge) {
         maxAgeMs = options.maxAge * 1000
       }
-      var handleDelta = function(delta) {
+      const handleDelta = function (delta) {
         saveDelta(delta, shouldStore, store, allShip)
       }
       app.signalk.on('delta', handleDelta)
@@ -228,7 +227,7 @@ module.exports = function (app) {
       store = {}
     },
     signalKApiRoutes: function (router) {
-      const metricsHandler = function(req, res, next) {
+      const metricsHandler = function (req, res, next) {
         res.type('text/plain; version=0.0.4; charset=utf-8')
         res.send(toMetrics(store))
       }
