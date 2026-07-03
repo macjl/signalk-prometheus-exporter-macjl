@@ -147,6 +147,7 @@ module.exports = function (app) {
         const source = update.$source
         if (update.values) {
           update.values.forEach(updateValue => {
+            if (!updateValue.path) return // path "" is only meaningful with an object value; scalar values with no path can't be turned into a Prometheus metric name
             const flat = flattenJson(updateValue.path, updateValue.value)
             for (const path in flat) {
               if (checkShouldStore(path)) {
