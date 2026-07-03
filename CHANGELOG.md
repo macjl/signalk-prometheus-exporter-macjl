@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.6 - 2026-07-03
 
 - Add the original Signal K path as a `signalk_path` metric label.
 
