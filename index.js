@@ -50,7 +50,7 @@ module.exports = function (app) {
       r += `# HELP ${k} ${k}\n`
       r += `# TYPE ${k} gauge\n`
 
-      let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}",signalk_path="${escapeLabelValue(entry.path)}"`
+      let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}",signalk_path="${escapeLabelValue(entry.signalkPath)}"`
       if (sourcePolicy === 'all') {
         labels += `,preferred="${entry.preferred === true ? 'true' : 'false'}"`
       }
@@ -80,9 +80,10 @@ module.exports = function (app) {
     }
   }
 
-  function checkAndStore (path, entry, context, source, timestamp, store, preferred) {
+  function checkAndStore (path, signalkPath, entry, context, source, timestamp, store, preferred) {
     const stored = {
       path,
+      signalkPath,
       value: entry.value,
       context,
       source,
@@ -162,7 +163,7 @@ module.exports = function (app) {
                   }
                 }
                 if (shouldStoreValue) {
-                  checkAndStore(path, flat[path], context, source, timestamp, store, preferred)
+                  checkAndStore(path, updateValue.path, flat[path], context, source, timestamp, store, preferred)
                 }
               }
             }

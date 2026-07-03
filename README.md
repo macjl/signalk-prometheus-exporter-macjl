@@ -38,10 +38,10 @@ The Prometheus endpoint contains current values such as:
     environment_mode{context="vessels.urn:mrn:imo:mmsi:227400000",source="derived-data",signalk_path="environment.mode",value_str="night"} 1 1765750245374
     # HELP navigation_position_longitude navigation_position_longitude
     # TYPE navigation_position_longitude gauge
-    navigation_position_longitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.position.longitude"} 17.1383474 1765750269680
+    navigation_position_longitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.position"} 17.1383474 1765750269680
     # HELP navigation_position_latitude navigation_position_latitude
     # TYPE navigation_position_latitude gauge
-    navigation_position_latitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.position.latitude"} 23.6357923 176575026968
+    navigation_position_latitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.position"} 23.6357923 176575026968
 
 When configured to export all sources, metrics include a `preferred` label:
 

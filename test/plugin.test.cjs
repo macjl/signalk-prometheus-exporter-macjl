@@ -236,6 +236,35 @@ test('keeps original Signal K path when metric name is normalized', () => {
   assert.match(response.body, /custom_path_with_dash\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="custom\.path-with-dash"\} 12 /)
 })
 
+test('keeps object root Signal K path when metric value is flattened', () => {
+  const { plugin, renderMetrics, emitDelta } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.can0',
+        timestamp: isoNow(),
+        values: [
+          {
+            path: 'navigation.position',
+            value: {
+              longitude: -4.2,
+              latitude: 48.1
+            }
+          }
+        ]
+      }
+    ]
+  })
+
+  const response = renderMetrics()
+  assert.match(response.body, /navigation_position_longitude\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="navigation\.position"\} -4\.2 /)
+  assert.match(response.body, /navigation_position_latitude\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="navigation\.position"\} 48\.1 /)
+})
+
 test('stop unsubscribes from delta events', () => {
   const { plugin, renderMetrics, emitDelta } = createHarness()
 

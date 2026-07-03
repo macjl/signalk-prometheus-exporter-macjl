@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Keep `signalk_path` set to the original Signal K path when object values are flattened into scalar metrics.
+
 ## 0.2.0 - 2026-07-03
 
 - Add a source export policy option with preferred-only and all-sources modes.
