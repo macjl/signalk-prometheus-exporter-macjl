@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-07-03
 
 - Add a source export policy option with preferred-only and all-sources modes.
 - Add a `preferred` metric label when all sources are exported.
