@@ -10,9 +10,19 @@ function isoNow (offsetMs = 0) {
 
 function createHarness () {
   const signalk = new EventEmitter()
+  const subscriptionDeltas = new EventEmitter()
+  const subscriptions = []
   const app = {
     selfId: 'urn:mrn:imo:mmsi:123456789',
-    signalk
+    signalk,
+    subscriptionmanager: {
+      subscribe (subscription, unsubscribes, errorCallback, callback) {
+        subscriptions.push({ subscription, errorCallback })
+        const listener = delta => callback(delta)
+        subscriptionDeltas.on('delta', listener)
+        unsubscribes.push(() => subscriptionDeltas.removeListener('delta', listener))
+      }
+    }
   }
 
   const plugin = pluginFactory(app)
@@ -44,15 +54,19 @@ function createHarness () {
     return response
   }
 
-  return { app, plugin, renderMetrics, signalk }
+  function emitDelta (delta) {
+    subscriptionDeltas.emit('delta', delta)
+  }
+
+  return { app, plugin, renderMetrics, signalk, emitDelta, subscriptions }
 }
 
 test('exports numeric and string values for self context', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -73,11 +87,11 @@ test('exports numeric and string values for self context', () => {
 })
 
 test('filters out other vessels when configured for self only', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.urn:mrn:imo:mmsi:999999999',
     updates: [
       {
@@ -93,11 +107,11 @@ test('filters out other vessels when configured for self only', () => {
 })
 
 test('includes all vessels when configured for all', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'All', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.urn:mrn:imo:mmsi:999999999',
     updates: [
       {
@@ -113,7 +127,7 @@ test('includes all vessels when configured for all', () => {
 })
 
 test('applies whitelist filtering', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({
     selfOrAll: 'Self',
@@ -121,7 +135,7 @@ test('applies whitelist filtering', () => {
     blackOrWhitelist: ['navigation.speedOverGround']
   })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -141,11 +155,11 @@ test('applies whitelist filtering', () => {
 })
 
 test('replaces stale string state instead of exporting both old and new values', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -156,7 +170,7 @@ test('replaces stale string state instead of exporting both old and new values',
     ]
   })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -173,11 +187,11 @@ test('replaces stale string state instead of exporting both old and new values',
 })
 
 test('uses per-update source and escapes label values in metrics output', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -200,11 +214,11 @@ test('uses per-update source and escapes label values in metrics output', () => 
 })
 
 test('keeps original Signal K path when metric name is normalized', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -220,12 +234,12 @@ test('keeps original Signal K path when metric name is normalized', () => {
 })
 
 test('stop unsubscribes from delta events', () => {
-  const { plugin, renderMetrics, signalk } = createHarness()
+  const { plugin, renderMetrics, emitDelta } = createHarness()
 
   plugin.start({ selfOrAll: 'Self', maxAge: 600 })
   plugin.stop()
 
-  signalk.emit('delta', {
+  emitDelta({
     context: 'vessels.self',
     updates: [
       {
@@ -238,4 +252,41 @@ test('stop unsubscribes from delta events', () => {
 
   const response = renderMetrics()
   assert.equal(response.body, '')
+})
+
+test('subscribes through subscription manager with all sources for self context', () => {
+  const { plugin, subscriptions } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+
+  assert.equal(subscriptions.length, 1)
+  assert.deepEqual(subscriptions[0].subscription, {
+    context: 'vessels.self',
+    sourcePolicy: 'all',
+    subscribe: [
+      {
+        path: '*'
+      }
+    ]
+  })
+})
+
+test('subscribes through subscription manager for all contexts when configured', () => {
+  const { plugin, subscriptions } = createHarness()
+
+  plugin.start({ selfOrAll: 'All', maxAge: 600 })
+
+  assert.equal(subscriptions.length, 1)
+  assert.equal(subscriptions[0].subscription.context, '*')
+  assert.equal(subscriptions[0].subscription.sourcePolicy, 'all')
+})
+
+test('requires the Signal K subscription manager', () => {
+  const { app, plugin } = createHarness()
+  delete app.subscriptionmanager
+
+  assert.throws(
+    () => plugin.start({ selfOrAll: 'Self', maxAge: 600 }),
+    /subscription manager is required/
+  )
 })

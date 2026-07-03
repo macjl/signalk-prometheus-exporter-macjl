@@ -213,10 +213,27 @@ module.exports = function (app) {
       const handleDelta = function (delta) {
         saveDelta(delta, shouldStore, store, allShip)
       }
-      app.signalk.on('delta', handleDelta)
-      unsubscribes.push(() => {
-        app.signalk.removeListener('delta', handleDelta)
-      })
+      if (!app.subscriptionmanager || typeof app.subscriptionmanager.subscribe !== 'function') {
+        throw new Error('Signal K subscription manager is required')
+      }
+      app.subscriptionmanager.subscribe(
+        {
+          context: allShip ? '*' : 'vessels.self',
+          sourcePolicy: 'all',
+          subscribe: [
+            {
+              path: '*'
+            }
+          ]
+        },
+        unsubscribes,
+        error => {
+          if (app.error) {
+            app.error('Prometheus exporter subscription error: ' + error)
+          }
+        },
+        handleDelta
+      )
     },
     stop: function () {
       unsubscribes.forEach(f => f())

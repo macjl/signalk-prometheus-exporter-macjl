@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use the Signal K subscription manager for delta subscriptions.
+
 ## 0.1.6 - 2026-07-03
 
 - Add the original Signal K path as a `signalk_path` metric label.
