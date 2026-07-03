@@ -48,7 +48,7 @@ module.exports = function (app) {
       r += `# HELP ${k} ${k}\n`
       r += `# TYPE ${k} gauge\n`
 
-      let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}"`
+      let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}",signalk_path="${escapeLabelValue(entry.path)}"`
       if (entry.strValue) {
         labels += `,value_str="${escapeLabelValue(entry.strValue)}"`
       }

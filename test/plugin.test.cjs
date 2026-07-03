@@ -68,8 +68,8 @@ test('exports numeric and string values for self context', () => {
 
   const response = renderMetrics()
   assert.equal(response.contentType, 'text/plain; version=0.0.4; charset=utf-8')
-  assert.match(response.body, /navigation_speedOverGround\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0"\} 3\.14 /)
-  assert.match(response.body, /environment_mode\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",value_str="night"\} 1 /)
+  assert.match(response.body, /navigation_speedOverGround\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="navigation\.speedOverGround"\} 3\.14 /)
+  assert.match(response.body, /environment_mode\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="environment\.mode",value_str="night"\} 1 /)
 })
 
 test('filters out other vessels when configured for self only', () => {
@@ -195,7 +195,28 @@ test('uses per-update source and escapes label values in metrics output', () => 
 
   const response = renderMetrics()
   assert.match(response.body, /source="nav\.\\"can0\\""/)
-  assert.match(response.body, /source="derived\\nsource",value_str="night\\"watch"/)
+  assert.match(response.body, /signalk_path="navigation\.speedOverGround"/)
+  assert.match(response.body, /source="derived\\nsource",signalk_path="environment\.mode",value_str="night\\"watch"/)
+})
+
+test('keeps original Signal K path when metric name is normalized', () => {
+  const { plugin, renderMetrics, signalk } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+
+  signalk.emit('delta', {
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.can0',
+        timestamp: isoNow(),
+        values: [{ path: 'custom.path-with-dash', value: 12 }]
+      }
+    ]
+  })
+
+  const response = renderMetrics()
+  assert.match(response.body, /custom_path_with_dash\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="custom\.path-with-dash"\} 12 /)
 })
 
 test('stop unsubscribes from delta events', () => {

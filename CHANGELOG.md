@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add the original Signal K path as a `signalk_path` metric label.
+
 ## 0.1.5 - 2026-07-02
 
 - Add Signal K App Store screenshot metadata.
