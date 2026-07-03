@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 - 2026-07-03
 
 - Keep `signalk_path` set to the original Signal K path when object values are flattened into scalar metrics.
 
