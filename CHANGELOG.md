@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.7 - 2026-07-03
 
 - Use the Signal K subscription manager for delta subscriptions.
 
