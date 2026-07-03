@@ -265,6 +265,61 @@ test('keeps object root Signal K path when metric value is flattened', () => {
   assert.match(response.body, /navigation_position_latitude\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="navigation\.position"\} 48\.1 /)
 })
 
+test('ignores empty Signal K paths', () => {
+  const { plugin, renderMetrics, emitDelta } = createHarness()
+
+  plugin.start({ selfOrAll: 'All', maxAge: 600, sourcePolicy: 'all' })
+
+  emitDelta({
+    context: 'vessels.urn:mrn:imo:mmsi:227406160',
+    updates: [
+      {
+        $source: 'SpeedAndCurrent',
+        timestamp: isoNow(),
+        values: [
+          { path: '', value: 0 },
+          { value: 1 }
+        ]
+      }
+    ]
+  }, 1)
+
+  const response = renderMetrics()
+  assert.equal(response.body, '')
+})
+
+test('prunes stale values while processing deltas', () => {
+  const { plugin, renderMetrics, emitDelta } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 1 })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.can0',
+        timestamp: isoNow(-31000),
+        values: [{ path: 'navigation.speedOverGround', value: 1 }]
+      }
+    ]
+  })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.can0',
+        timestamp: isoNow(),
+        values: [{ path: 'navigation.courseOverGroundTrue', value: 2 }]
+      }
+    ]
+  })
+
+  const response = renderMetrics()
+  assert.doesNotMatch(response.body, /navigation_speedOverGround/)
+  assert.match(response.body, /navigation_courseOverGroundTrue/)
+})
+
 test('stop unsubscribes from delta events', () => {
   const { plugin, renderMetrics, emitDelta } = createHarness()
 
@@ -367,6 +422,8 @@ test('subscribes twice and labels preferred state when all sources are configure
   assert.match(response.body, /source="nav\.primary",signalk_path="navigation\.speedOverGround",preferred="true"\} 3\.14 /)
   assert.match(response.body, /source="nav\.backup",signalk_path="navigation\.speedOverGround",preferred="false"\} 2\.72 /)
   assert.doesNotMatch(response.body, /3\.15/)
+  assert.equal(response.body.match(/^# HELP navigation_speedOverGround /gm).length, 1)
+  assert.equal(response.body.match(/^# TYPE navigation_speedOverGround /gm).length, 1)
 })
 
 test('updates preferred label when all-source data arrives before preferred data', () => {

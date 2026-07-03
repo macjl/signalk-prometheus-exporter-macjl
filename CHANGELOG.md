@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 - 2026-07-03
+
+- Ignore empty Signal K paths to avoid invalid Prometheus metric names.
+- Avoid repeated Prometheus HELP and TYPE lines for multi-source metrics.
+- Reduce all-sources CPU usage by avoiding full-store preferred-source scans.
+- Prune stale metrics while processing deltas.
+
 ## 0.2.1 - 2026-07-03
 
 - Keep `signalk_path` set to the original Signal K path when object values are flattened into scalar metrics.

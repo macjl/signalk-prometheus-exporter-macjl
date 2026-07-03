@@ -20,11 +20,14 @@ module.exports = function (app) {
   let allShip = 0
   let sourcePolicy = 'preferred'
   let preferredByPath = new Map()
+  let lastPrune = 0
 
   let unsubscribes = []
   let shouldStore = function (path) {
     return true
   }
+
+  const pruneIntervalMs = 30000
 
   function toPromKey (v) {
     return v.replace(/-|\./g, '_')
@@ -40,19 +43,22 @@ module.exports = function (app) {
   function toMetrics (store) {
     let r = ''
     const now = Date.now()
+    pruneStore(store, now)
+    const describedMetrics = new Set()
     for (const key in store) {
       const entry = store[key]
-      if (now - entry.timestamp > maxAgeMs) {
-        delete store[key]
-        continue
-      }
       const k = toPromKey(entry.path)
-      r += `# HELP ${k} ${k}\n`
-      r += `# TYPE ${k} gauge\n`
+      if (!describedMetrics.has(k)) {
+        describedMetrics.add(k)
+        r += `# HELP ${k} ${k}\n`
+        r += `# TYPE ${k} gauge\n`
+      }
 
       let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}",signalk_path="${escapeLabelValue(entry.signalkPath)}"`
       if (sourcePolicy === 'all') {
-        labels += `,preferred="${entry.preferred === true ? 'true' : 'false'}"`
+        const preferredSource = getPreferredSource(entry.context, entry.path)
+        const preferred = preferredSource ? entry.source === preferredSource : entry.preferred === true
+        labels += `,preferred="${preferred ? 'true' : 'false'}"`
       }
       if (entry.strValue) {
         labels += `,value_str="${escapeLabelValue(entry.strValue)}"`
@@ -70,12 +76,24 @@ module.exports = function (app) {
     return context + '\0' + path
   }
 
-  function updatePreferredSource (context, path, source, store) {
-    preferredByPath.set(pathKey(context, path), source)
+  function getPreferredSource (context, path) {
+    const entry = preferredByPath.get(pathKey(context, path))
+    return entry && entry.source
+  }
+
+  function updatePreferredSource (context, path, source, timestamp) {
+    preferredByPath.set(pathKey(context, path), { source, timestamp })
+  }
+
+  function pruneStore (store, now) {
     for (const key in store) {
-      const existing = store[key]
-      if (existing.context === context && existing.path === path) {
-        existing.preferred = existing.source === source
+      if (now - store[key].timestamp > maxAgeMs) {
+        delete store[key]
+      }
+    }
+    for (const [key, entry] of preferredByPath) {
+      if (now - entry.timestamp > maxAgeMs) {
+        preferredByPath.delete(key)
       }
     }
   }
@@ -137,17 +155,25 @@ module.exports = function (app) {
   }
   function saveDelta (delta, checkShouldStore, store, allShip, preferredMode) {
     if (!delta.updates || delta.updates.length === 0) return
+    const now = Date.now()
+    if (now - lastPrune > pruneIntervalMs) {
+      pruneStore(store, now)
+      lastPrune = now
+    }
     if (delta.context === 'vessels.self') {
       delta.context = selfContext
     }
     if (delta.updates && (delta.context === selfContext || allShip)) {
       delta.updates.forEach(update => {
         const context = delta.context
-        const timestamp = new Date(update.timestamp).getTime()
+        const updateTimestamp = new Date(update.timestamp).getTime()
+        const timestamp = Number.isFinite(updateTimestamp) ? updateTimestamp : now
         const source = update.$source
         if (update.values) {
           update.values.forEach(updateValue => {
-            if (!updateValue.path) return // path "" is only meaningful with an object value; scalar values with no path can't be turned into a Prometheus metric name
+            if (!updateValue || typeof updateValue.path !== 'string' || updateValue.path === '') {
+              return
+            }
             const flat = flattenJson(updateValue.path, updateValue.value)
             for (const path in flat) {
               if (checkShouldStore(path)) {
@@ -155,10 +181,10 @@ module.exports = function (app) {
                 let shouldStoreValue = true
                 if (sourcePolicy === 'all') {
                   if (preferredMode) {
-                    updatePreferredSource(context, path, source, store)
+                    updatePreferredSource(context, path, source, timestamp)
                     preferred = true
                   } else {
-                    const preferredSource = preferredByPath.get(pathKey(context, path))
+                    const preferredSource = getPreferredSource(context, path)
                     shouldStoreValue = preferredSource !== source
                     preferred = false
                   }
@@ -260,6 +286,7 @@ module.exports = function (app) {
       }
       sourcePolicy = options.sourcePolicy === 'all' ? 'all' : 'preferred'
       preferredByPath = new Map()
+      lastPrune = 0
 
       const handlePreferredDelta = function (delta) {
         saveDelta(delta, shouldStore, store, allShip, true)
@@ -314,6 +341,7 @@ module.exports = function (app) {
       }
       store = {}
       preferredByPath = new Map()
+      lastPrune = 0
     },
     signalKApiRoutes: function (router) {
       const metricsHandler = function (req, res, next) {
