@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a source export policy option with preferred-only and all-sources modes.
+- Add a `preferred` metric label when all sources are exported.
+
 ## 0.1.7 - 2026-07-03
 
 - Use the Signal K subscription manager for delta subscriptions.

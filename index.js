@@ -18,6 +18,8 @@ module.exports = function (app) {
   let store = {}
   let maxAgeMs = 600000
   let allShip = 0
+  let sourcePolicy = 'preferred'
+  let preferredByPath = new Map()
 
   let unsubscribes = []
   let shouldStore = function (path) {
@@ -49,6 +51,9 @@ module.exports = function (app) {
       r += `# TYPE ${k} gauge\n`
 
       let labels = `context="${escapeLabelValue(entry.context)}",source="${escapeLabelValue(entry.source)}",signalk_path="${escapeLabelValue(entry.path)}"`
+      if (sourcePolicy === 'all') {
+        labels += `,preferred="${entry.preferred === true ? 'true' : 'false'}"`
+      }
       if (entry.strValue) {
         labels += `,value_str="${escapeLabelValue(entry.strValue)}"`
       }
@@ -57,15 +62,38 @@ module.exports = function (app) {
     }
     return r
   }
-  function checkAndStore (path, entry, context, source, timestamp, store) {
-    if (entry.type === 'number') {
-      store[path + context + source] = {
-        path,
-        value: entry.value,
-        context,
-        source,
-        timestamp
+  function seriesKey (context, path, source) {
+    return context + '\0' + path + '\0' + source
+  }
+
+  function pathKey (context, path) {
+    return context + '\0' + path
+  }
+
+  function updatePreferredSource (context, path, source, store) {
+    preferredByPath.set(pathKey(context, path), source)
+    for (const key in store) {
+      const existing = store[key]
+      if (existing.context === context && existing.path === path) {
+        existing.preferred = existing.source === source
       }
+    }
+  }
+
+  function checkAndStore (path, entry, context, source, timestamp, store, preferred) {
+    const stored = {
+      path,
+      value: entry.value,
+      context,
+      source,
+      timestamp
+    }
+    if (typeof preferred === 'boolean') {
+      stored.preferred = preferred
+    }
+
+    if (entry.type === 'number') {
+      store[seriesKey(context, path, source)] = stored
     } else if (entry.type === 'string') {
       for (const key in store) {
         const existing = store[key]
@@ -78,12 +106,9 @@ module.exports = function (app) {
           delete store[key]
         }
       }
-      store[path + context + source + '_str_' + entry.value] = {
-        path,
+      store[seriesKey(context, path, source) + '\0str\0' + entry.value] = {
+        ...stored,
         value: 1,
-        context,
-        source,
-        timestamp,
         strValue: entry.value
       }
     }
@@ -109,7 +134,7 @@ module.exports = function (app) {
     }
     return result
   }
-  function saveDelta (delta, checkShouldStore, store, allShip) {
+  function saveDelta (delta, checkShouldStore, store, allShip, preferredMode) {
     if (!delta.updates || delta.updates.length === 0) return
     if (delta.context === 'vessels.self') {
       delta.context = selfContext
@@ -124,7 +149,21 @@ module.exports = function (app) {
             const flat = flattenJson(updateValue.path, updateValue.value)
             for (const path in flat) {
               if (checkShouldStore(path)) {
-                checkAndStore(path, flat[path], context, source, timestamp, store)
+                let preferred
+                let shouldStoreValue = true
+                if (sourcePolicy === 'all') {
+                  if (preferredMode) {
+                    updatePreferredSource(context, path, source, store)
+                    preferred = true
+                  } else {
+                    const preferredSource = preferredByPath.get(pathKey(context, path))
+                    shouldStoreValue = preferredSource !== source
+                    preferred = false
+                  }
+                }
+                if (shouldStoreValue) {
+                  checkAndStore(path, flat[path], context, source, timestamp, store, preferred)
+                }
               }
             }
           })
@@ -173,6 +212,13 @@ module.exports = function (app) {
           title: 'Maximum data age (s)',
           description: 'Metrics older than this age (in seconds) are not exported. Default: 600 (10 minutes).',
           default: 600
+        },
+        sourcePolicy: {
+          type: 'string',
+          title: 'Sources to export',
+          description: 'With preferred, only the Signal K preferred source is exported. With all, all sources are exported and metrics include a preferred label.',
+          default: 'preferred',
+          enum: ['preferred', 'all']
         }
       }
     },
@@ -210,21 +256,28 @@ module.exports = function (app) {
       if (options.maxAge) {
         maxAgeMs = options.maxAge * 1000
       }
-      const handleDelta = function (delta) {
-        saveDelta(delta, shouldStore, store, allShip)
+      sourcePolicy = options.sourcePolicy === 'all' ? 'all' : 'preferred'
+      preferredByPath = new Map()
+
+      const handlePreferredDelta = function (delta) {
+        saveDelta(delta, shouldStore, store, allShip, true)
+      }
+      const handleAllDelta = function (delta) {
+        saveDelta(delta, shouldStore, store, allShip, false)
       }
       if (!app.subscriptionmanager || typeof app.subscriptionmanager.subscribe !== 'function') {
         throw new Error('Signal K subscription manager is required')
       }
+      const context = allShip ? '*' : 'vessels.self'
+      const subscribe = [
+        {
+          path: '*'
+        }
+      ]
       app.subscriptionmanager.subscribe(
         {
-          context: allShip ? '*' : 'vessels.self',
-          sourcePolicy: 'all',
-          subscribe: [
-            {
-              path: '*'
-            }
-          ]
+          context,
+          subscribe
         },
         unsubscribes,
         error => {
@@ -232,8 +285,24 @@ module.exports = function (app) {
             app.error('Prometheus exporter subscription error: ' + error)
           }
         },
-        handleDelta
+        handlePreferredDelta
       )
+      if (sourcePolicy === 'all') {
+        app.subscriptionmanager.subscribe(
+          {
+            context,
+            sourcePolicy: 'all',
+            subscribe
+          },
+          unsubscribes,
+          error => {
+            if (app.error) {
+              app.error('Prometheus exporter subscription error: ' + error)
+            }
+          },
+          handleAllDelta
+        )
+      }
     },
     stop: function () {
       unsubscribes.forEach(f => f())
@@ -242,6 +311,7 @@ module.exports = function (app) {
         return true
       }
       store = {}
+      preferredByPath = new Map()
     },
     signalKApiRoutes: function (router) {
       const metricsHandler = function (req, res, next) {

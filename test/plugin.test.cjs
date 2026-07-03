@@ -10,17 +10,17 @@ function isoNow (offsetMs = 0) {
 
 function createHarness () {
   const signalk = new EventEmitter()
-  const subscriptionDeltas = new EventEmitter()
   const subscriptions = []
   const app = {
     selfId: 'urn:mrn:imo:mmsi:123456789',
     signalk,
     subscriptionmanager: {
       subscribe (subscription, unsubscribes, errorCallback, callback) {
-        subscriptions.push({ subscription, errorCallback })
-        const listener = delta => callback(delta)
-        subscriptionDeltas.on('delta', listener)
-        unsubscribes.push(() => subscriptionDeltas.removeListener('delta', listener))
+        const item = { subscription, errorCallback, callback, closed: false }
+        subscriptions.push(item)
+        unsubscribes.push(() => {
+          item.closed = true
+        })
       }
     }
   }
@@ -54,8 +54,11 @@ function createHarness () {
     return response
   }
 
-  function emitDelta (delta) {
-    subscriptionDeltas.emit('delta', delta)
+  function emitDelta (delta, subscriptionIndex = 0) {
+    const subscription = subscriptions[subscriptionIndex]
+    if (subscription && !subscription.closed) {
+      subscription.callback(delta)
+    }
   }
 
   return { app, plugin, renderMetrics, signalk, emitDelta, subscriptions }
@@ -262,7 +265,6 @@ test('subscribes through subscription manager with all sources for self context'
   assert.equal(subscriptions.length, 1)
   assert.deepEqual(subscriptions[0].subscription, {
     context: 'vessels.self',
-    sourcePolicy: 'all',
     subscribe: [
       {
         path: '*'
@@ -278,7 +280,95 @@ test('subscribes through subscription manager for all contexts when configured',
 
   assert.equal(subscriptions.length, 1)
   assert.equal(subscriptions[0].subscription.context, '*')
-  assert.equal(subscriptions[0].subscription.sourcePolicy, 'all')
+  assert.equal(subscriptions[0].subscription.sourcePolicy, undefined)
+})
+
+test('subscribes twice and labels preferred state when all sources are configured', () => {
+  const { plugin, renderMetrics, emitDelta, subscriptions } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600, sourcePolicy: 'all' })
+
+  assert.equal(subscriptions.length, 2)
+  assert.deepEqual(subscriptions[0].subscription, {
+    context: 'vessels.self',
+    subscribe: [
+      {
+        path: '*'
+      }
+    ]
+  })
+  assert.deepEqual(subscriptions[1].subscription, {
+    context: 'vessels.self',
+    sourcePolicy: 'all',
+    subscribe: [
+      {
+        path: '*'
+      }
+    ]
+  })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.primary',
+        timestamp: isoNow(),
+        values: [{ path: 'navigation.speedOverGround', value: 3.14 }]
+      }
+    ]
+  }, 0)
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.primary',
+        timestamp: isoNow(1000),
+        values: [{ path: 'navigation.speedOverGround', value: 3.15 }]
+      },
+      {
+        $source: 'nav.backup',
+        timestamp: isoNow(1000),
+        values: [{ path: 'navigation.speedOverGround', value: 2.72 }]
+      }
+    ]
+  }, 1)
+
+  const response = renderMetrics()
+  assert.match(response.body, /source="nav\.primary",signalk_path="navigation\.speedOverGround",preferred="true"\} 3\.14 /)
+  assert.match(response.body, /source="nav\.backup",signalk_path="navigation\.speedOverGround",preferred="false"\} 2\.72 /)
+  assert.doesNotMatch(response.body, /3\.15/)
+})
+
+test('updates preferred label when all-source data arrives before preferred data', () => {
+  const { plugin, renderMetrics, emitDelta } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600, sourcePolicy: 'all' })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.primary',
+        timestamp: isoNow(),
+        values: [{ path: 'navigation.speedOverGround', value: 3.14 }]
+      }
+    ]
+  }, 1)
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'nav.primary',
+        timestamp: isoNow(1000),
+        values: [{ path: 'navigation.speedOverGround', value: 3.15 }]
+      }
+    ]
+  }, 0)
+
+  const response = renderMetrics()
+  assert.match(response.body, /source="nav\.primary",signalk_path="navigation\.speedOverGround",preferred="true"\} 3\.15 /)
 })
 
 test('requires the Signal K subscription manager', () => {

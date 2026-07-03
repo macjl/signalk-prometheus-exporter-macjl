@@ -43,6 +43,11 @@ The Prometheus endpoint contains current values such as:
     # TYPE navigation_position_latitude gauge
     navigation_position_latitude{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.position.latitude"} 23.6357923 176575026968
 
+When configured to export all sources, metrics include a `preferred` label:
+
+    navigation_speedOverGround{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.speedOverGround",preferred="true"} 3.155 1765750269678
+    navigation_speedOverGround{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.2",signalk_path="navigation.speedOverGround",preferred="false"} 3.142 1765750269678
+
 ## Notes
 
 - This repository is the maintained fork.
