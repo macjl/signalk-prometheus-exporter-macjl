@@ -20,10 +20,14 @@ module.exports = function (app) {
   let allShip = 0
   let sourcePolicy = 'preferred'
   let preferredByPath = new Map()
+  let stringKeysBySeries = new Map()
   let lastPrune = 0
 
   let unsubscribes = []
   let shouldStore = function (path) {
+    return true
+  }
+  let mayStorePath = function (path) {
     return true
   }
 
@@ -88,7 +92,7 @@ module.exports = function (app) {
   function pruneStore (store, now) {
     for (const key in store) {
       if (now - store[key].timestamp > maxAgeMs) {
-        delete store[key]
+        deleteStoreKey(store, key)
       }
     }
     for (const [key, entry] of preferredByPath) {
@@ -98,7 +102,16 @@ module.exports = function (app) {
     }
   }
 
+  function deleteStoreKey (store, key) {
+    const entry = store[key]
+    if (entry && typeof entry.strValue !== 'undefined') {
+      stringKeysBySeries.delete(seriesKey(entry.context, entry.path, entry.source))
+    }
+    delete store[key]
+  }
+
   function checkAndStore (path, signalkPath, entry, context, source, timestamp, store, preferred) {
+    const baseSeriesKey = seriesKey(context, path, source)
     const stored = {
       path,
       signalkPath,
@@ -112,28 +125,30 @@ module.exports = function (app) {
     }
 
     if (entry.type === 'number') {
-      store[seriesKey(context, path, source)] = stored
-    } else if (entry.type === 'string') {
-      for (const key in store) {
-        const existing = store[key]
-        if (
-          existing.path === path &&
-          existing.context === context &&
-          existing.source === source &&
-          typeof existing.strValue !== 'undefined'
-        ) {
-          delete store[key]
-        }
+      const previousStringKey = stringKeysBySeries.get(baseSeriesKey)
+      if (previousStringKey) {
+        deleteStoreKey(store, previousStringKey)
       }
-      store[seriesKey(context, path, source) + '\0str\0' + entry.value] = {
+      store[baseSeriesKey] = stored
+    } else if (entry.type === 'string') {
+      const previousStringKey = stringKeysBySeries.get(baseSeriesKey)
+      if (previousStringKey) {
+        deleteStoreKey(store, previousStringKey)
+      }
+      const key = baseSeriesKey + '\0str\0' + entry.value
+      store[key] = {
         ...stored,
         value: 1,
         strValue: entry.value
       }
+      stringKeysBySeries.set(baseSeriesKey, key)
     }
   }
   function flattenJson (pathPrefix, obj, result) {
     result = result || {}
+    if (!mayStorePath(pathPrefix)) {
+      return result
+    }
     if (typeof obj === 'number') {
       result[pathPrefix] = { type: 'number', value: obj }
     } else if (typeof obj === 'boolean') {
@@ -254,6 +269,9 @@ module.exports = function (app) {
       shouldStore = function () {
         return true
       }
+      mayStorePath = function () {
+        return true
+      }
 
       if (
         typeof options.blackOrWhitelist !== 'undefined' &&
@@ -261,14 +279,22 @@ module.exports = function (app) {
         options.blackOrWhitelist.length > 0
       ) {
         const obj = {}
+        const paths = options.blackOrWhitelist.slice()
 
-        options.blackOrWhitelist.forEach(element => {
+        paths.forEach(element => {
           obj[element] = true
         })
 
         if (options.blackOrWhite === 'White') {
           shouldStore = function (path) {
             return typeof obj[path] !== 'undefined'
+          }
+          mayStorePath = function (path) {
+            if (typeof obj[path] !== 'undefined') {
+              return true
+            }
+            const prefix = path + '.'
+            return paths.some(element => element.startsWith(prefix))
           }
         } else {
           shouldStore = function (path) {
@@ -286,6 +312,7 @@ module.exports = function (app) {
       }
       sourcePolicy = options.sourcePolicy === 'all' ? 'all' : 'preferred'
       preferredByPath = new Map()
+      stringKeysBySeries = new Map()
       lastPrune = 0
 
       const handlePreferredDelta = function (delta) {
@@ -339,8 +366,12 @@ module.exports = function (app) {
       shouldStore = function () {
         return true
       }
+      mayStorePath = function () {
+        return true
+      }
       store = {}
       preferredByPath = new Map()
+      stringKeysBySeries = new Map()
       lastPrune = 0
     },
     signalKApiRoutes: function (router) {

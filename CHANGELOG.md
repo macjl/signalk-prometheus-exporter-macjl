@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2026-07-14
+
+- Reduce CPU usage for string-valued metrics by replacing full-store scans with direct string-series indexing.
+- Avoid flattening object subtrees that cannot match a whitelist.
+
 ## 0.2.2 - 2026-07-03
 
 - Ignore empty Signal K paths to avoid invalid Prometheus metric names.
