@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-09-11
 
 - Add an exporter session start metric for VictoriaMetrics alert rules that need to ignore event-driven states received before the current Signal K/plugin session.
 
