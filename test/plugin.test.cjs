@@ -4,8 +4,20 @@ const { EventEmitter } = require('node:events')
 
 const pluginFactory = require('../index')
 
+const sessionStartMetricName = 'signalk_prometheus_exporter_session_start_time_seconds'
+
 function isoNow (offsetMs = 0) {
   return new Date(Date.now() + offsetMs).toISOString()
+}
+
+function metricLines (body, name) {
+  return body.split('\n').filter(line => line.startsWith(name + '{'))
+}
+
+function metricValue (body, name) {
+  const line = metricLines(body, name)[0]
+  assert.ok(line, `${name} metric was not emitted`)
+  return Number(line.slice(line.lastIndexOf(' ') + 1))
 }
 
 function createHarness () {
@@ -106,7 +118,7 @@ test('filters out other vessels when configured for self only', () => {
   })
 
   const response = renderMetrics()
-  assert.equal(response.body, '')
+  assert.doesNotMatch(response.body, /navigation_speedOverGround/)
 })
 
 test('includes all vessels when configured for all', () => {
@@ -265,6 +277,73 @@ test('keeps object root Signal K path when metric value is flattened', () => {
   assert.match(response.body, /navigation_position_latitude\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="nav\.can0",signalk_path="navigation\.position"\} 48\.1 /)
 })
 
+test('emits session start metric at initialization', () => {
+  const { plugin, renderMetrics } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+
+  const response = renderMetrics()
+  assert.match(response.body, new RegExp(`# HELP ${sessionStartMetricName} .*invalid`))
+  assert.match(response.body, new RegExp(`# TYPE ${sessionStartMetricName} gauge`))
+
+  const lines = metricLines(response.body, sessionStartMetricName)
+  assert.equal(lines.length, 1)
+  assert.match(lines[0], new RegExp(`^${sessionStartMetricName}\\{source="signalk-prometheus-exporter-macjl"\\} \\d+(\\.\\d+)?$`))
+})
+
+test('starts a newer session after reset', async () => {
+  const { plugin, renderMetrics } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+  const first = metricValue(renderMetrics().body, sessionStartMetricName)
+
+  plugin.stop()
+  await new Promise(resolve => setTimeout(resolve, 5))
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+  const second = metricValue(renderMetrics().body, sessionStartMetricName)
+
+  assert.ok(second > first)
+})
+
+test('session start metric has no unbounded labels', () => {
+  const { plugin, renderMetrics } = createHarness()
+
+  plugin.start({ selfOrAll: 'All', maxAge: 600, sourcePolicy: 'all' })
+
+  const line = metricLines(renderMetrics().body, sessionStartMetricName)[0]
+  assert.ok(line)
+  assert.equal(line.match(/\{([^}]*)\}/)[1], 'source="signalk-prometheus-exporter-macjl"')
+})
+
+test('keeps notification metrics unchanged', () => {
+  const { plugin, renderMetrics, emitDelta } = createHarness()
+
+  plugin.start({ selfOrAll: 'Self', maxAge: 600 })
+
+  emitDelta({
+    context: 'vessels.self',
+    updates: [
+      {
+        $source: 'notifications.provider',
+        timestamp: isoNow(),
+        values: [
+          {
+            path: 'notifications.anchor',
+            value: {
+              state: 'alert',
+              message: 'Anchor alarm'
+            }
+          }
+        ]
+      }
+    ]
+  })
+
+  const response = renderMetrics()
+  assert.match(response.body, /notifications_anchor_state\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="notifications\.provider",signalk_path="notifications\.anchor",value_str="alert"\} 1 /)
+  assert.match(response.body, /notifications_anchor_message\{context="vessels\.urn:mrn:imo:mmsi:123456789",source="notifications\.provider",signalk_path="notifications\.anchor",value_str="Anchor alarm"\} 1 /)
+})
+
 test('ignores empty Signal K paths', () => {
   const { plugin, renderMetrics, emitDelta } = createHarness()
 
@@ -285,7 +364,8 @@ test('ignores empty Signal K paths', () => {
   }, 1)
 
   const response = renderMetrics()
-  assert.equal(response.body, '')
+  assert.doesNotMatch(response.body, /^\{/m)
+  assert.doesNotMatch(response.body, /SpeedAndCurrent/)
 })
 
 test('prunes stale values while processing deltas', () => {

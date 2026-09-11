@@ -48,6 +48,23 @@ When configured to export all sources, metrics include a `preferred` label:
     navigation_speedOverGround{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.1",signalk_path="navigation.speedOverGround",preferred="true"} 3.155 1765750269678
     navigation_speedOverGround{context="vessels.urn:mrn:imo:mmsi:227400000",source="Can0.2",signalk_path="navigation.speedOverGround",preferred="false"} 3.142 1765750269678
 
+The endpoint also exposes an internal exporter session metric:
+
+    # HELP signalk_prometheus_exporter_session_start_time_seconds Unix timestamp in seconds for the current Signal K exporter session; when this value changes, event-driven states received before it should be considered invalid.
+    # TYPE signalk_prometheus_exporter_session_start_time_seconds gauge
+    signalk_prometheus_exporter_session_start_time_seconds{source="signalk-prometheus-exporter-macjl"} 1789113050.506
+
+Signal K values are still exported from event-driven updates. The plugin does not periodically re-emit all values. The session metric is a validity boundary for alerting rules: after Signal K or the plugin restarts, previous event-driven states should be considered unknown until their source emits them again.
+
+In VictoriaMetrics/MetricsQL, alert rules can use `tlast_over_time()` on event-driven state metrics such as `notifications_*_state` and compare the timestamp of the last state with the latest `signalk_prometheus_exporter_session_start_time_seconds` value. Only states received after the current exporter session started should be considered active. For example, adapt this shape to the notification path and state names you alert on:
+
+```metricsql
+tlast_over_time(notifications_anchor_state{value_str="alert"}[24h])
+  > scalar(last_over_time(signalk_prometheus_exporter_session_start_time_seconds[24h]))
+```
+
+If a standalone plugin restart cannot be distinguished from a full Signal K server restart, the plugin deliberately starts a new session boundary. This fail-closed behavior avoids keeping stale event-driven states active after a restart.
+
 ## Notes
 
 - This repository is the maintained fork.

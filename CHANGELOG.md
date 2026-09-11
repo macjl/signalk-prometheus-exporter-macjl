@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add an exporter session start metric for VictoriaMetrics alert rules that need to ignore event-driven states received before the current Signal K/plugin session.
+
 ## 0.2.3 - 2026-07-14
 
 - Reduce CPU usage for string-valued metrics by replacing full-store scans with direct string-series indexing.

@@ -15,6 +15,8 @@
 
 module.exports = function (app) {
   const selfContext = 'vessels.' + app.selfId
+  const sessionStartMetricName = 'signalk_prometheus_exporter_session_start_time_seconds'
+  const exporterSource = 'signalk-prometheus-exporter-macjl'
   let store = {}
   let maxAgeMs = 600000
   let allShip = 0
@@ -22,6 +24,7 @@ module.exports = function (app) {
   let preferredByPath = new Map()
   let stringKeysBySeries = new Map()
   let lastPrune = 0
+  let sessionStartTimeSeconds = 0
 
   let unsubscribes = []
   let shouldStore = function (path) {
@@ -49,6 +52,12 @@ module.exports = function (app) {
     const now = Date.now()
     pruneStore(store, now)
     const describedMetrics = new Set()
+    if (sessionStartTimeSeconds > 0) {
+      describedMetrics.add(sessionStartMetricName)
+      r += `# HELP ${sessionStartMetricName} Unix timestamp in seconds for the current Signal K exporter session; when this value changes, event-driven states received before it should be considered invalid.\n`
+      r += `# TYPE ${sessionStartMetricName} gauge\n`
+      r += `${sessionStartMetricName}{source="${escapeLabelValue(exporterSource)}"} ${sessionStartTimeSeconds}\n`
+    }
     for (const key in store) {
       const entry = store[key]
       const k = toPromKey(entry.path)
@@ -314,6 +323,7 @@ module.exports = function (app) {
       preferredByPath = new Map()
       stringKeysBySeries = new Map()
       lastPrune = 0
+      sessionStartTimeSeconds = Date.now() / 1000
 
       const handlePreferredDelta = function (delta) {
         saveDelta(delta, shouldStore, store, allShip, true)
@@ -373,6 +383,7 @@ module.exports = function (app) {
       preferredByPath = new Map()
       stringKeysBySeries = new Map()
       lastPrune = 0
+      sessionStartTimeSeconds = 0
     },
     signalKApiRoutes: function (router) {
       const metricsHandler = function (req, res, next) {
